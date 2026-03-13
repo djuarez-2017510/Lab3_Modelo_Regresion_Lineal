@@ -1,0 +1,40 @@
+---
+title: "Laboratorio 3 - Análisis Exploratorio"
+author: "Nombre del Grupo"
+output: html_document
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+
+# Cargar dataset
+load("listings.RData")
+
+# Obtener tipos de variables
+tipos <- sapply(listings, class)
+
+# Clasificación automática
+vars_numericas <- names(listings)[tipos %in% c("numeric","integer")]
+vars_character <- names(listings)[tipos == "character"]
+
+# Variables de texto (identificadas manualmente)
+vars_texto <- c(
+"name",
+"description",
+"neighborhood_overview",
+"amenities",
+"host_about"
+)
+
+# Identificadores
+vars_id <- c(
+"id",
+"listing_url",
+"scrape_id",
+"host_id",
+"host_url",
+"picture_url"
+)
+
+# Variables categóricas (character que no son texto ni identificadores)
+vars_categoricas <- setdiff(vars_character, c(vars_texto, vars_id))
