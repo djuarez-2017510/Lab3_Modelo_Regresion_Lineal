@@ -1,14 +1,16 @@
 ---
 title: "Laboratorio 3 - Análisis Exploratorio"
-author: "Nombre del Grupo"
+author: "Humberto de la Cruz - 23735, Daniel Juarez - 23709, Dilary Cruz - 231010"
 output: html_document
 ---
+#### repositorio: https://github.com/djuarez-2017510/Lab3_Modelo_Regresion_Lineal
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
 library(dplyr)
 
 # Cargar dataset
 load("listings.RData")
+
 
 # Obtener tipos de variables
 tipos <- sapply(listings, class)
@@ -38,3 +40,210 @@ vars_id <- c(
 
 # Variables categóricas (character que no son texto ni identificadores)
 vars_categoricas <- setdiff(vars_character, c(vars_texto, vars_id))
+
+```
+
+## 1. Análisis Exploratorio y Preprocesamiento de Datos
+
+
+```{r, echo=FALSE}
+
+data.frame(
+  Observaciones = nrow(listings),
+  Variables = ncol(listings)
+)
+
+```
+El dataset contiene 171,748 observaciones y 80 variables.  
+Las variables incluyen información sobre:
+
+* Características de la propiedad
+* Características del host
+* Ubicación
+* Disponibilidad
+* Reseñas
+* Precio
+
+Dentro del dataset existen variables de distintos tipos:
+
+* **Numéricas** 
+* **Categóricas** 
+* **Texto** 
+* **Fechas**
+
+Muchas de estas no serán útiles para el modelo.
+
+### Variables Numericas
+
+```{r, echo=FALSE}
+vars_numericas
+length(vars_numericas)
+```
+
+### Variables Categoricas
+
+```{r, echo=FALSE}
+vars_categoricas
+length(vars_categoricas)
+```
+
+### Variables Texto
+```{r, echo=FALSE}
+vars_texto
+length(vars_texto)
+```
+
+
+
+### Data Actualizada
+```{r preprocesamiento, echo=FALSE}
+# Definición del vector de variables útiles (colmutils)
+colmutils <- c(
+  "price", "accommodates", "bedrooms", "beds", "bathrooms", 
+  "latitude", "longitude", "property_type", "room_type",
+  "number_of_reviews", "review_scores_rating", "review_scores_location",
+  "availability_365", "estimated_occupancy_l365d", "minimum_nights",
+  "neighbourhood_cleansed", "host_is_superhost", "host_location"
+)
+
+# Creación del set de datos filtrado
+listings_clean <- listings[, colmutils]
+
+# Verificación de la limpieza
+dim(listings_clean)
+
+names(listings_clean)
+
+```
+
+
+El conjunto de datos original `listings.RData` cuenta con 171,748 registros y 80 variables. Para la consultoría de **SmartStay Advisors**, es imperativo reducir esta dimensionalidad para enfocarnos en los factores que realmente optimizan el precio, la calidad y la rentabilidad.
+
+### 1.1 Selección y Justificación de Variables Conservadas (`colmutils`)
+
+Se han seleccionado 18 variables estratégicas alineadas con los objetivos de la consultoría:
+
+* **Variable Respuesta (Target):**
+  * `price`: Variable fundamental para el modelo de regresión lineal simple y múltiple, esencial para estimar precios competitivos.
+
+* **Capacidad y Estructura Física:**
+  * `accommodates`, `bedrooms`, `beds`, `bathrooms`: Estas variables determinan el tamaño de la propiedad y son los predictores más lógicos del valor de mercado.
+
+* **Ubicación Estratégica:**
+  * `latitude`, `longitude`, `neighbourhood_cleansed`: La ubicación es el factor crítico que SmartStay utiliza para proponer propiedades que optimicen el presupuesto y la cercanía para sus clientes.
+
+* **Métricas de Ocupación e Ingresos:**
+  * `estimated_occupancy_l365d`, `availability_365`: Permiten identificar propiedades con bajo desempeño y analizar oportunidades de mejora en ocupación.
+
+* **Calidad y Reputación (KPIs):**
+  * `number_of_reviews`, `review_scores_rating`, `review_scores_location`: Factores que influyen en la decisión final del cliente y en la comprensión de los ingresos.
+
+* **Variables de Gestión Operativa:**
+  * `minimum_nights`, `room_type`, `property_type`, `host_is_superhost`: Determinan la flexibilidad del alojamiento y el nivel de servicio ofrecido.
+
+### 1.2 Justificación de la Eliminación de Variables
+
+Para asegurar que la investigación sea reproducible y cumpla con los estándares de minería de datos, se descartaron 63 variables del conjunto original basándose en los siguientes criterios técnicos:
+
+* **Identificadores y Metadatos de Sistema:**
+  * Variables como `id`, `scrape_id` y `host_id` son etiquetas únicas que no poseen valor estadístico para un modelo de regresión.
+
+* **Contenido Multimedia y Enlaces Externos:**
+  * Se eliminaron `listing_url`, `picture_url` y `host_url` por ser cadenas de texto que apuntan a recursos externos y no pueden ser procesadas mediante modelos de regresión lineal.
+
+* **Complejidad de Texto No Estructurado:**
+  * Variables como `name`, `description` y `neighborhood_overview` contienen lenguaje natural que requeriría técnicas de minería de texto fuera del alcance de este análisis cuantitativo.
+
+* **Redundancia Administrativa y Control Temporal:**
+  * Columnas como `calendar_last_scraped`, `license` y `source` son metadatos de la recolección de datos que no influyen en la percepción de calidad del cliente ni en los factores de ocupación.
+
+* **Registros de Auditoría Interna:**
+  * Campos como `last_scraped` y `calendar_updated` son registros temporales de la base de datos que no presentan una relación causal con el precio ni con la rentabilidad esperada.
+
+---
+
+
+```{r transformacion_precio, warning=FALSE, message=FALSE, echo=FALSE}
+# Cargar librerías necesarias para visualización y transformación
+library(ggplot2)
+library(corrplot)
+library(tidyr)
+
+# Transformación de la variable price a numérico
+listings_clean <- listings_clean %>%
+  mutate(
+    # gsub elimina los símbolos "$" y "," y as.numeric convierte a número
+    price = as.numeric(gsub("[\\$,]", "", price))
+  ) %>%
+  drop_na(price) # Aseguramos no tener valores nulos en la variable respuesta
+
+```
+
+### 1. Histograma del Precio
+
+```{r eda_precio, echo=FALSE, warning=FALSE, message=FALSE}
+
+ggplot(listings_clean, aes(x = price)) +
+  geom_histogram(fill = "#007A87", color = "white", bins = 40) +
+  scale_x_continuous(limits = c(0, 800)) + 
+  theme_minimal() +
+  labs(title = "Distribución del Precio por Noche",
+       x = "Precio ($)",
+       y = "Cantidad de Propiedades")
+
+```
+
+El histograma expone un claro contraste en la composición del mercado: la distribución del precio presenta una fuerte asimetría positiva. La inmensa mayoría de las propiedades se concentran en un rango económico o medio, mientras que existe una larga y delgada cola de propiedades con precios muy elevados que se extienden hasta los $800.
+
+
+### 2. Scatterplot: Precio vs Capacidad
+
+```{r eda_capacidad, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(listings_clean, aes(x = accommodates, y = price)) +
+  geom_point(alpha = 0.4, color = "#FF5A5F", position = "jitter") +
+  geom_smooth(method = "lm", color = "black", se = FALSE) + 
+  scale_y_continuous(limits = c(0, 1000)) +
+  theme_minimal() +
+  labs(title = "Relación Lineal: Precio vs. Capacidad de Huéspedes",
+       x = "Capacidad (Número de personas)",
+       y = "Precio ($)")
+
+```
+
+Al encuadrar el precio frente a la capacidad de huéspedes (accommodates), la línea de tendencia de regresión lineal simple confirma una relación directamente proporcional: a mayor capacidad, el precio base tiende a subir. Sin embargo, la dispersión de los puntos revela un fenómeno de heterocedasticidad; es decir, a medida que la capacidad aumenta, la varianza o el "ruido" en los precios se vuelve mucho más amplio. Esto indica que en las propiedades grandes, otros factores invisibles en esta gráfica toman un rol mucho más protagónico para definir el valor final.
+
+
+
+### 3. Matriz de Correlación de Variables Numéricas
+
+```{r eda_correlacion, echo=FALSE, warning=FALSE, message=FALSE}
+datos_num <- listings_clean %>%
+  select(price, accommodates, bedrooms, beds, bathrooms, number_of_reviews) %>%
+  drop_na()
+
+matriz_correlacion <- cor(datos_num)
+
+corrplot(matriz_correlacion, method = "color", type = "upper", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45,
+         number.cex = 0.8)
+
+```
+
+Este mapa de calor numérico revela dos hallazgos críticos para la fase de predicción. Primero, existe una evidente multicolinealidad entre las variables de tamaño: accommodates, bedrooms y beds tienen correlaciones altísimas entre sí. Para un modelo múltiple, deberemos quedarnos con solo una de ellas (como accommodates) para evitar redundancias. Segundo, las relaciones lineales puras de estas variables numéricas con el price son sorpresivamente débiles en esta muestra.
+
+
+### 4. Scatterplot: Precio vs Número de Reseñas
+
+```{r eda_resenas, echo=FALSE, warning=FALSE, message=FALSE}
+
+ggplot(listings_clean, aes(x = number_of_reviews, y = price)) +
+  geom_point(alpha = 0.3, color = "#484848") +
+  scale_y_continuous(limits = c(0, 800)) +
+  theme_minimal() +
+  labs(title = "Impacto de la Popularidad en el Precio",
+       x = "Cantidad de Reseñas Acumuladas",
+       y = "Precio ($)")
+```
+
+La dispersión de las reseñas dibuja un panorama muy claro sobre el comportamiento del consumidor: no existe una relación lineal que asocie una mayor cantidad de reseñas con un precio más alto. Por el contrario, la mayor densidad de puntos se concentra en el cuadrante inferior izquierdo. Las propiedades que logran acumular volúmenes masivos de reseñas más de 500 o 1000 pertenecen casi exclusivamente al segmento de precios más bajos.
+
