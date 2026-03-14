@@ -103,7 +103,7 @@ colmutils <- c(
   "latitude", "longitude", "property_type", "room_type",
   "number_of_reviews", "review_scores_rating", "review_scores_location",
   "availability_365", "estimated_occupancy_l365d", "minimum_nights",
-  "neighbourhood_cleansed", "host_is_superhost", "host_location"
+  "neighbourhood_cleansed", "host_is_superhost", "reviews_per_month", "review_scores_value"
 )
 
 # Creación del set de datos filtrado
@@ -121,7 +121,7 @@ El conjunto de datos original `listings.RData` cuenta con 171,748 registros y 80
 
 ### 1.1 Selección y Justificación de Variables Conservadas (`colmutils`)
 
-Se han seleccionado 18 variables estratégicas alineadas con los objetivos de la consultoría:
+Se han seleccionado 19 variables estratégicas alineadas con los objetivos de la consultoría:
 
 * **Variable Respuesta (Target):**
   * `price`: Variable fundamental para el modelo de regresión lineal simple y múltiple, esencial para estimar precios competitivos.
@@ -179,7 +179,7 @@ listings_clean <- listings_clean %>%
 
 ```
 
-### 1. Histograma del Precio
+### 1.3 Histograma del Precio
 
 ```{r eda_precio, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -196,7 +196,7 @@ ggplot(listings_clean, aes(x = price)) +
 El histograma expone un claro contraste en la composición del mercado: la distribución del precio presenta una fuerte asimetría positiva. La inmensa mayoría de las propiedades se concentran en un rango económico o medio, mientras que existe una larga y delgada cola de propiedades con precios muy elevados que se extienden hasta los $800.
 
 
-### 2. Scatterplot: Precio vs Capacidad
+### 1.4 Scatterplot: Precio vs Capacidad
 
 ```{r eda_capacidad, echo=FALSE, warning=FALSE, message=FALSE}
 ggplot(listings_clean, aes(x = accommodates, y = price)) +
@@ -214,7 +214,7 @@ Al encuadrar el precio frente a la capacidad de huéspedes (accommodates), la l�
 
 
 
-### 3. Matriz de Correlación de Variables Numéricas
+### 1.5 Matriz de Correlación de Variables Numéricas
 
 ```{r eda_correlacion, echo=FALSE, warning=FALSE, message=FALSE}
 datos_num <- listings_clean %>%
@@ -232,7 +232,7 @@ corrplot(matriz_correlacion, method = "color", type = "upper",
 Este mapa de calor numérico revela dos hallazgos críticos para la fase de predicción. Primero, existe una evidente multicolinealidad entre las variables de tamaño: accommodates, bedrooms y beds tienen correlaciones altísimas entre sí. Para un modelo múltiple, deberemos quedarnos con solo una de ellas (como accommodates) para evitar redundancias. Segundo, las relaciones lineales puras de estas variables numéricas con el price son sorpresivamente débiles en esta muestra.
 
 
-### 4. Scatterplot: Precio vs Número de Reseñas
+### 1.6 Scatterplot: Precio vs Número de Reseñas
 
 ```{r eda_resenas, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -247,3 +247,85 @@ ggplot(listings_clean, aes(x = number_of_reviews, y = price)) +
 
 La dispersión de las reseñas dibuja un panorama muy claro sobre el comportamiento del consumidor: no existe una relación lineal que asocie una mayor cantidad de reseñas con un precio más alto. Por el contrario, la mayor densidad de puntos se concentra en el cuadrante inferior izquierdo. Las propiedades que logran acumular volúmenes masivos de reseñas más de 500 o 1000 pertenecen casi exclusivamente al segmento de precios más bajos.
 
+
+
+```{r, echo=FALSE}
+#convertir variables categóricas a factor
+
+listings_clean <- listings_clean %>%
+mutate(
+room_type = as.factor(room_type),
+property_type = as.factor(property_type),
+neighbourhood_cleansed = as.factor(neighbourhood_cleansed),
+host_is_superhost = as.factor(host_is_superhost)
+)
+```
+
+
+## Clustering
+
+
+```{r clustering, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(factoextra)
+
+# Selección de variables
+cluster_data <- listings_clean %>%
+  select(price, accommodates, bedrooms, bathrooms, review_scores_rating, availability_365) %>%
+  drop_na()
+
+# Escalar variables
+cluster_scaled <- scale(cluster_data)
+
+# Tomar una muestra para clustering (para evitar problemas de memoria)
+set.seed(123)
+sample_index <- sample(1:nrow(cluster_scaled), 5000)
+
+cluster_sample <- cluster_scaled[sample_index, ]
+
+# Método del codo
+fviz_nbclust(cluster_sample, kmeans, method = "wss") +
+  labs(title = "Método del Codo para determinar el número óptimo de clusters")
+
+# Aplicar K-means
+kmeans_model <- kmeans(cluster_sample, centers = 3)
+
+# Visualización
+fviz_cluster(kmeans_model, data = cluster_sample)
+
+```
+Con el objetivo de identificar patrones dentro del conjunto de propiedades, se aplicó un análisis de clustering utilizando el algoritmo K-means sobre variables numéricas representativas como precio, capacidad de huéspedes, número de dormitorios, número de baños, calificación promedio y disponibilidad anual. Para determinar el número adecuado de grupos, se utilizó el método del codo (Elbow Method), el cual analiza la variación dentro de los clusters a medida que aumenta el número de agrupaciones. En la gráfica se observa una reducción significativa de la variabilidad entre k = 1 y k = 3, mientras que a partir de k = 3 la mejora comienza a estabilizarse, indicando que agregar más clusters aporta poca reducción adicional del error. Por esta razón, se seleccionó k = 3 como el número óptimo de clusters. Esta segmentación permite identificar diferentes perfiles de propiedades dentro del mercado, los cuales pueden interpretarse como segmentos de propiedades económicas, intermedias y premium, dependiendo de sus características de capacidad, reputación y disponibilidad.
+
+
+---
+
+## División Train/Test
+
+Algo como esto queda perfecto para el laboratorio:
+
+**División del Conjunto de Datos**
+
+Para evaluar correctamente el desempeño de los modelos predictivos, el conjunto de datos fue dividido en dos subconjuntos:
+
+- **Conjunto de entrenamiento (Train)**  
+- **Conjunto de prueba (Test)**
+
+Se utilizó una proporción **80% entrenamiento y 20% prueba**, práctica común en problemas de aprendizaje supervisado.
+
+El proceso se realizó utilizando una **semilla aleatoria (`set.seed(123)`)**, lo cual garantiza que la división sea **reproducible** cada vez que se ejecute el código.
+
+El conjunto de entrenamiento se utiliza para **ajustar los modelos de regresión**, mientras que el conjunto de prueba se emplea posteriormente para **evaluar la capacidad de generalización del modelo en datos no vistos**.
+
+Dado que la variable objetivo (`price`) es continua, **no fue necesario aplicar una división estratificada**, ya que este tipo de técnica se utiliza principalmente en problemas de clasificación.
+
+---
+```{r, echo=FALSE}
+#División Train/Test
+set.seed(123)
+
+train_index <- sample(1:nrow(listings_clean), 0.8*nrow(listings_clean))
+
+train <- listings_clean[train_index, ]
+test <- listings_clean[-train_index, ]
+
+```
