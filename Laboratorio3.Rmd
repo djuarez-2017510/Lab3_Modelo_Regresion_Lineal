@@ -364,6 +364,8 @@ plot(modelo1)
 En conjunto, los gráficos de diagnóstico indican que el modelo de regresión lineal simple presenta varias limitaciones. Se observan desviaciones de la normalidad en los residuos, presencia de heterocedasticidad y algunos valores atípicos que influyen significativamente en el modelo. Estos resultados sugieren que el precio de las propiedades no puede ser explicado adecuadamente por una sola variable. Por esta razón, en las siguientes secciones se explorarán modelos más complejos que incorporen múltiples variables explicativas para mejorar la capacidad predictiva.
 
 #### Resultados
+**Predicciones en test**.
+
 ```{r modelo1_predicciones, echo=FALSE}
 
 pred_modelo1 <- predict(modelo1, newdata = test)
@@ -405,3 +407,87 @@ El análisis de residuos también mostró la presencia de valores atípicos, des
 
 Debido a estas limitaciones, en las siguientes secciones se explorarán modelos de regresión múltiple, incorporando varias variables explicativas para mejorar la precisión de las predicciones y capturar de manera más adecuada los factores que influyen en el precio de las propiedades.
 
+
+### 4.1 Modelo 2 — Regresión Lineal Múltiple
+El modelo de regresión múltiple incorpora múltiples variables numéricas relacionadas con las características de la propiedad, su reputación y su disponibilidad. El objetivo es capturar de manera más completa los factores que influyen en el precio de las propiedades.
+
+```{r modelo2_entrenamiento, echo=FALSE}
+
+modelo2 <- lm(price ~ accommodates +
+                        bedrooms +
+                        beds +
+                        bathrooms +
+                        latitude +
+                        longitude +
+                        number_of_reviews +
+                        review_scores_rating +
+                        review_scores_location +
+                        availability_365 +
+                        estimated_occupancy_l365d +
+                        minimum_nights +
+                        reviews_per_month +
+                        review_scores_value,
+              data = train)
+
+summary(modelo2)
+```
+
+#### Resumen
+El modelo presenta un R² de 0.028, lo que indica que aproximadamente 2.8% de la variabilidad del precio es explicada por las variables incluidas en el modelo. Aunque este valor representa una mejora respecto al modelo de regresión simple anterior, sigue siendo relativamente bajo, lo cual sugiere que existen otros factores relevantes que influyen en el precio de las propiedades y que no están siendo capturados por las variables numéricas incluidas en este modelo.
+
+#### Analisis de resiudos
+```{r modelo2_residuos, echo=FALSE}
+
+par(mfrow=c(2,2))
+plot(modelo2)
+```
+
+Los gráficos de diagnóstico del modelo permiten evaluar los principales supuestos de la regresión lineal. En el gráfico Residuals vs Fitted se observa que los residuos no están completamente distribuidos de forma aleatoria alrededor de cero, y existen varios valores extremos con residuos elevados. Esto sugiere que el modelo aún tiene dificultades para explicar adecuadamente algunos precios muy altos presentes en el dataset.
+
+El Q-Q plot muestra una desviación considerable respecto a la línea de normalidad, especialmente en los cuantiles superiores. Esto indica que los residuos no siguen una distribución normal, lo cual probablemente se debe a la presencia de propiedades con precios extremadamente altos que generan valores atípicos en el conjunto de datos.
+
+En el gráfico Scale-Location se observa una ligera tendencia creciente en la dispersión de los residuos a medida que aumentan los valores ajustados, lo que sugiere la presencia de heterocedasticidad. Esto significa que la variabilidad del error no es constante para todos los niveles de precio.
+
+Finalmente, el gráfico Residuals vs Leverage revela la existencia de algunas observaciones con valores de leverage relativamente altos, lo que indica que ciertas propiedades pueden tener una influencia considerable sobre el modelo.
+
+En conjunto, estos resultados sugieren que, aunque el modelo múltiple mejora ligeramente la capacidad explicativa respecto al modelo simple, aún existen limitaciones relacionadas con la presencia de outliers, heterocedasticidad y desviaciones de la normalidad. Esto refuerza la idea de que el precio de las propiedades está influenciado por múltiples factores complejos y que podrían requerirse transformaciones adicionales, como el uso de log(price) o la selección de variables más relevantes para mejorar el ajuste del modelo.
+
+
+#### Resultados
+**Predicciones en test**.
+
+```{r modelo2_predicciones, echo=FALSE}
+
+pred_modelo2 <- predict(modelo2, newdata = test)
+
+head(pred_modelo2)
+```
+
+**RMSE**.
+
+```{r modelo2_rmse, echo=FALSE}
+rmse_modelo2 <- sqrt(mean((test$price - pred_modelo2)^2, na.rm = TRUE))
+
+rmse_modelo2
+
+```
+
+```{r modelo2_grafica, echo=FALSE}
+
+ggplot(train, aes(x = accommodates, y = price)) +
+  geom_point(alpha = 0.3, color = "#007A87") +
+  geom_smooth(method = "lm", formula = y ~ x, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Relación entre Capacidad de Huéspedes y Precio",
+    x = "Capacidad de Huéspedes",
+    y = "Precio"
+  )
+
+```
+
+El modelo de regresión lineal múltiple fue construido utilizando diversas variables numéricas relacionadas con las características de la propiedad, su ubicación, disponibilidad y métricas de reputación. En comparación con el modelo de regresión simple anterior, este modelo logra capturar una mayor cantidad de información relevante para explicar el precio de las propiedades.
+
+El RMSE obtenido fue aproximadamente 2672.97, lo cual representa una mejora significativa respecto al modelo anterior, indicando que el uso de múltiples variables permite realizar predicciones más precisas. Sin embargo, algunas predicciones generadas por el modelo resultan en valores negativos, lo cual no tiene interpretación práctica en el contexto del precio de una propiedad. Esto ocurre debido a la naturaleza lineal del modelo y a la presencia de valores extremos y alta variabilidad en el dataset.
+
+Además, el análisis de residuos mostró la presencia de heterocedasticidad, valores atípicos y desviaciones de la normalidad, lo que sugiere que el modelo aún presenta limitaciones para capturar completamente la complejidad del precio de los alojamientos.
