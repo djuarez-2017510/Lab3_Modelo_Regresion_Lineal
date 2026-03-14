@@ -261,9 +261,9 @@ host_is_superhost = as.factor(host_is_superhost)
 )
 ```
 
+---
 
-## Clustering
-
+## 2.  Clustering
 
 ```{r clustering, echo=FALSE, message=FALSE, warning=FALSE}
 
@@ -299,7 +299,7 @@ Con el objetivo de identificar patrones dentro del conjunto de propiedades, se a
 
 ---
 
-## División Train/Test
+## 3. División Train/Test
 
 Algo como esto queda perfecto para el laboratorio:
 
@@ -310,7 +310,7 @@ Para evaluar correctamente el desempeño de los modelos predictivos, el conjunto
 - **Conjunto de entrenamiento (Train)**  
 - **Conjunto de prueba (Test)**
 
-Se utilizó una proporción **80% entrenamiento y 20% prueba**, práctica común en problemas de aprendizaje supervisado.
+Se utilizó una proporción **70% entrenamiento y 30% prueba**, práctica común en problemas de aprendizaje supervisado.
 
 El proceso se realizó utilizando una **semilla aleatoria (`set.seed(123)`)**, lo cual garantiza que la división sea **reproducible** cada vez que se ejecute el código.
 
@@ -323,9 +323,85 @@ Dado que la variable objetivo (`price`) es continua, **no fue necesario aplicar 
 #División Train/Test
 set.seed(123)
 
-train_index <- sample(1:nrow(listings_clean), 0.8*nrow(listings_clean))
+train_index <- sample(1:nrow(listings_clean), 0.7*nrow(listings_clean))
 
 train <- listings_clean[train_index, ]
 test <- listings_clean[-train_index, ]
 
 ```
+---
+
+## 4. Modelos
+### 4.1 Modelo 1 - Regresión Lineal Simple
+Para el primer modelo se seleccionó la variable **accommodates**, la cual representa la capacidad máxima de huéspedes que puede alojar una propiedad. Esta variable es un buen predictor inicial del precio, ya que propiedades con mayor capacidad suelen ofrecer más espacio y comodidades, lo que tiende a incrementar el precio por noche.
+
+```{r modelo1_entrenamiento, echo=FALSE}
+
+modelo1 <- lm(price ~ accommodates, data = train)
+
+summary(modelo1)
+
+
+```
+
+#### Resumen
+price = β0 + β1 * accommodates
+price = 85.31 + 137.32 * accommodates
+
+**Interpretación:** Por cada huésped adicional que puede alojar la propiedad, el precio promedio aumenta aproximadamente $137.32.
+
+
+**R² = 0.009459** Esto significa que el modelo explica 0.94% de la variación del precio. Pero Aunque la variable accommodates es estadísticamente significativa, el valor de R² es muy bajo, lo que indica que la capacidad de huéspedes por sí sola explica una proporción muy pequeña de la variabilidad del precio.
+
+
+#### Analices de Residuos
+```{r modelo1_residuos, echo=FALSE}
+
+par(mfrow=c(2,2))
+plot(modelo1)
+```
+
+En conjunto, los gráficos de diagnóstico indican que el modelo de regresión lineal simple presenta varias limitaciones. Se observan desviaciones de la normalidad en los residuos, presencia de heterocedasticidad y algunos valores atípicos que influyen significativamente en el modelo. Estos resultados sugieren que el precio de las propiedades no puede ser explicado adecuadamente por una sola variable. Por esta razón, en las siguientes secciones se explorarán modelos más complejos que incorporen múltiples variables explicativas para mejorar la capacidad predictiva.
+
+#### Resultados
+```{r modelo1_predicciones, echo=FALSE}
+
+pred_modelo1 <- predict(modelo1, newdata = test)
+
+head(pred_modelo1)
+```
+
+---
+
+Calculamos **RMSE**.
+
+
+```{r modelo1_rmse, echo=FALSE}
+
+rmse_modelo1 <- sqrt(mean((test$price - pred_modelo1)^2))
+
+rmse_modelo1
+```
+
+```{r modelo1_grafica, echo=FALSE}
+
+library(ggplot2)
+
+ggplot(train, aes(x = accommodates, y = price)) +
+  geom_point(alpha = 0.3, color = "#FF5A5F") +
+  geom_smooth(method = "lm", color = "black", se = FALSE) +
+  theme_minimal() +
+  labs(
+    title = "Modelo de Regresión Lineal Simple",
+    x = "Capacidad de Huéspedes",
+    y = "Precio"
+  )
+```
+El modelo de regresión lineal simple construido utilizando la variable accommodates permitió analizar la relación entre la capacidad de huéspedes y el precio de las propiedades. Los resultados muestran que existe una relación positiva entre ambas variables: a medida que aumenta la capacidad de huéspedes, el precio estimado de la propiedad también tiende a incrementarse. El coeficiente estimado indica que cada huésped adicional incrementa el precio esperado en aproximadamente $137.
+
+Sin embargo, el valor de R² = 0.0094 indica que la variable accommodates por sí sola explica menos del 1% de la variabilidad del precio, lo que sugiere que el precio depende de muchos otros factores adicionales como la ubicación, el tipo de propiedad, la reputación del host y las características del alojamiento. Además, el RMSE obtenido (≈ 4258) evidencia que el error promedio de las predicciones es considerablemente alto en comparación con el rango de precios observado en el dataset.
+
+El análisis de residuos también mostró la presencia de valores atípicos, desviaciones de la normalidad y heterocedasticidad, lo cual indica que el modelo simple no captura adecuadamente la estructura de los datos. Una posible mejora consiste en aplicar una transformación logarítmica a la variable precio (log(price)), ya que la distribución del precio presenta una fuerte asimetría positiva. Esta transformación puede ayudar a reducir el impacto de los valores extremos, mejorar la normalidad de los residuos y potencialmente aumentar la capacidad explicativa del modelo.
+
+Debido a estas limitaciones, en las siguientes secciones se explorarán modelos de regresión múltiple, incorporando varias variables explicativas para mejorar la precisión de las predicciones y capturar de manera más adecuada los factores que influyen en el precio de las propiedades.
+
