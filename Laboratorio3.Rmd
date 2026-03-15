@@ -491,3 +491,99 @@ El modelo de regresión lineal múltiple fue construido utilizando diversas vari
 El RMSE obtenido fue aproximadamente 2672.97, lo cual representa una mejora significativa respecto al modelo anterior, indicando que el uso de múltiples variables permite realizar predicciones más precisas. Sin embargo, algunas predicciones generadas por el modelo resultan en valores negativos, lo cual no tiene interpretación práctica en el contexto del precio de una propiedad. Esto ocurre debido a la naturaleza lineal del modelo y a la presencia de valores extremos y alta variabilidad en el dataset.
 
 Además, el análisis de residuos mostró la presencia de heterocedasticidad, valores atípicos y desviaciones de la normalidad, lo que sugiere que el modelo aún presenta limitaciones para capturar completamente la complejidad del precio de los alojamientos.
+
+
+
+
+### 4.1 Modelo 3 — Regresión Lineal Múltiple Optimizado
+
+Siguiendo las recomendaciones y hallazgos del análisis exploratorio, este tercer modelo implementa mejoras críticas para corregir la multicolinealidad, la heterocedasticidad y la influencia de valores atípicos (*outliers*) detectados en los modelos anteriores.
+
+Primero, se filtran los valores extremos en el conjunto de entrenamiento. Luego, se aplica una transformación logarítmica a la variable respuesta y se seleccionan únicamente las variables predictoras que no presentan alta correlación entre sí.
+
+
+```{r modelo3_entrenamiento, echo=FALSE}
+# 1. Filtro de Atípicos (Outliers) solo en el set de entrenamiento
+train_optimizado <- train %>%
+  filter(price <= 800, accommodates <= 10) # Eliminamos el "ruido" extremo
+
+# 2. Creación del modelo usando log(price) y variables no redundantes
+modelo3 <- lm(log(price) ~ accommodates + 
+                           bathrooms + 
+                           review_scores_location + 
+                           availability_365 + 
+                           number_of_reviews + 
+                           minimum_nights, 
+              data = train_optimizado)
+
+summary(modelo3)
+```
+
+#### Resumen
+
+La optimización del modelo mediante la transformación logarítmica y la curaduría de variables arrojó mejoras sustanciales en la capacidad explicativa estadística. El coeficiente de determinación múltiple ($R^2$) ascendió drásticamente de un pobre $0.028$ en el Modelo 2 a un $0.366$. Esto indica que nuestro modelo optimizado ahora es capaz de explicar el 36.6% de la variabilidad del logaritmo del precio, un salto cualitativo enorme frente al modelo múltiple base. Adicionalmente, todas las variables seleccionadas demostraron ser estadísticamente significativas (p-values < 0.05).
+
+
+
+#### Análisis de Residuos del Modelo Optimizado
+
+```{r modelo3_residuos, echo=FALSE}
+
+par(mfrow=c(2,2))
+plot(modelo3)
+```
+
+El diagnóstico de los residuos confirma que la transformación log(price) fue una decisión acertada. En el gráfico Q-Q plot, los puntos se ajustan mucho más a la diagonal de normalidad en el centro de la distribución, aunque persisten desviaciones en las colas debido a la naturaleza extrema de algunos precios. En el gráfico Residuals vs Fitted, observamos una nube de puntos mucho más estable y distribuida horizontalmente en comparación con el Modelo 2, lo que sugiere una reducción significativa del problema de heterocedasticidad.
+
+
+#### Resultados
+**Predicciones en test**.
+
+Dado que el modelo fue entrenado para predecir el logaritmo del precio, las predicciones resultantes deben transformarse de vuelta a su escala original en dólares utilizando la función exponencial (exp()) antes de poder calcular el error (RMSE).
+
+```{r predicciones modelo 3, echo=FALSE}
+# 1. Predecir el logaritmo
+pred_log_modelo3 <- predict(modelo3, newdata = test)
+
+# 2. Revertir el logaritmo a dólares (El "revelado")
+pred_modelo3 <- exp(pred_log_modelo3) 
+
+# Mostrar los primeros resultados
+head(pred_modelo3)
+
+```
+
+#### RMSE
+
+```{r modelo3_rmse, echo=FALSE}
+# Calcular el error cuadrático medio
+rmse_modelo3 <- sqrt(mean((test$price - pred_modelo3)^2, na.rm = TRUE))
+
+rmse_modelo3
+
+```
+
+Al revertir la transformación logarítmica utilizando la función exponencial, logramos el objetivo de negocio más importante de esta iteración: eliminar por completo las predicciones de precios negativos que plagaban al Modelo 2. Como se observa en la muestra, las predicciones ahora tienen un sentido comercial real como lo son $96.13, $166.13.
+
+
+```{r modelo3_grafica, echo=FALSE}
+
+library(ggplot2)
+
+ggplot(train_optimizado, aes(x = accommodates, y = price)) +
+  geom_point(alpha = 0.3, color = "#3593DE") +
+  geom_smooth(method = "lm", formula = y ~ x, color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Modelo Optimizado: Capacidad vs Precio",
+    subtitle = "Excluyendo valores atípicos extremos",
+    x = "Capacidad de Huéspedes",
+    y = "Precio ($)"
+  )
+
+```
+
+La gráfica visualiza claramente el efecto del filtro de valores atípicos. La línea de tendencia logra capturar de manera más limpia el comportamiento base del mercado, eliminando la distorsión masiva que generaban las propiedades extremas en el modelo original
+
+
+
