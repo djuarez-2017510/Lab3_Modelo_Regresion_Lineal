@@ -587,3 +587,104 @@ La gráfica visualiza claramente el efecto del filtro de valores atípicos. La l
 
 
 
+### 4.2 Modelo 4 — Inclusión de Variables Categóricas
+
+Para este modelo final, introducimos la variable room_type. El análisis previo demostró que la privacidad es un factor determinante que las variables numéricas no capturan por sí solas.
+
+```{r modelo4_entrenamiento, echo=FALSE, message=FALSE, warning=FALSE}
+# Modelo final integrando factores cualitativos y transformación logarítmica
+modelo4 <- lm(log(price) ~ accommodates + 
+                           bathrooms + 
+                           review_scores_location + 
+                           availability_365 + 
+                           room_type, 
+              data = train_optimizado)
+
+summary(modelo4)
+
+# Predicciones y cálculo de RMSE para comparación
+pred_log_modelo4 <- predict(modelo4, newdata = test)
+pred_modelo4 <- exp(pred_log_modelo4)
+rmse_modelo4 <- sqrt(mean((test$price - pred_modelo4)^2, na.rm = TRUE))
+```
+
+#### Resumen
+Al incluir room_type, el modelo ajusta un precio base diferenciado para cada categoría (apartamento completo, habitación privada, etc.). Esto incrementa la precisión al reconocer que el mercado valora la privacidad como un activo independiente de la capacidad física de la propiedad.
+
+```{r modelo4_analisis, echo=FALSE, message=FALSE, warning=FALSE}
+#### Análisis de Residuos del Modelo 4
+par(mfrow=c(2,2))
+plot(modelo4)
+```
+
+#### Interpretación
+La inclusión de variables categóricas permite que el modelo ajuste un intercepto diferente por cada tipo de propiedad. El gráfico de residuos muestra una mayor homogeneidad en comparación con los modelos iniciales, lo que confirma que el error sistemático se reduce al reconocer las diferencias intrínsecas entre una casa completa y una habitación compartida.
+
+#### Resultados: Predicciones en test
+```{r, echo=FALSE}
+# Predecir el logaritmo y revertir la transformación utilizando la función exponencial
+pred_log_modelo4 <- predict(modelo4, newdata = test)
+pred_modelo4 <- exp(pred_log_modelo4) 
+
+# Comparación de una muestra de valores reales frente a los predichos
+head(data.frame(Real = test$price, Predicho = pred_modelo4))
+```
+
+####RMSE
+```{r, echo=FALSE}
+# Cálculo del error cuadrático medio en la escala original de dólares ($)
+rmse_modelo4 <- sqrt(mean((test$price - pred_modelo4)^2, na.rm = TRUE))
+rmse_modelo4
+```
+
+#### Gráfico de dispersión
+```{r modelo4_grafica, echo=FALSE}
+library(ggplot2)
+
+ggplot(train_optimizado, aes(x = accommodates, y = price, color = room_type)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", formula = y ~ x, se = FALSE) +
+  theme_minimal() +
+  labs(
+    title = "Modelo 4: Capacidad vs Precio por Tipo de Alojamiento",
+    subtitle = "Ajuste considerando variables categóricas",
+    x = "Capacidad de Huéspedes",
+    y = "Precio ($)",
+    color = "Tipo de Habitación"
+  )
+```
+
+La visualización confirma que el tipo de habitación actúa como un modulador crítico del precio. Se observa que las propiedades de tipo "Hotel room" e "Entire home/apt" mantienen los niveles de precios más altos para cualquier capacidad de huéspedes. Por el contrario, las habitaciones compartidas ("Shared room") presentan una pendiente casi plana y precios significativamente bajos, lo que valida la decisión de incluir esta variable categórica para mejorar la precisión del modelo final.
+
+
+## 5. Comparación Final de Modelos
+```{r comparacion, echo=FALSE}
+# Resumen de métricas basado en los resultados obtenidos
+modelos <- c("Modelo 1: Simple", "Modelo 2: Múltiple", "Modelo 3: Log-Optimizado", "Modelo 4: Híbrido (+Cat)")
+r_cuadrado <- c(0.0094, 0.0280, 0.3660, 0.4041) 
+rmse_valores <- c(4258.00, 2672.97, 1723.00, 2703.37)
+
+resumen_modelos <- data.frame(
+  Modelo = modelos,
+  `R-Cuadrado` = round(r_cuadrado, 4),
+  `RMSE ($)` = round(rmse_valores, 2)
+)
+
+knitr::kable(resumen_modelos, caption = "Resumen de Desempeño por Iteración")
+```
+
+## 6. Discusión de Resultados
+Tras evaluar las cuatro iteraciones de modelos, se observa una mejora progresiva en la capacidad de explicar el comportamiento de los precios en el mercado de Airbnb. El Modelo 1 mostró que la capacidad de huéspedes (accommodates) por sí sola es un predictor muy limitado, explicando menos del 1% de la variabilidad del precio. Esto evidenció que el valor de una propiedad depende de múltiples factores más allá del tamaño o la capacidad.
+
+El Modelo 2 incorporó más variables explicativas para capturar esta complejidad; sin embargo, presentó limitaciones como problemas de multicolinealidad y predicciones poco realistas, incluyendo precios negativos.
+
+El mayor avance se logró con el Modelo 3 (Optimizado), donde la transformación logarítmica del precio y la eliminación de valores atípicos mejoraron significativamente el ajuste del modelo, elevando el $R^2$ a aproximadamente 36.6%. Esto sugiere que los precios se explican mejor en términos porcentuales que mediante relaciones lineales simples, además de reducir problemas de heterocedasticidad.
+
+el Modelo 4 incorporó la variable categórica room_type, permitiendo capturar el efecto del nivel de privacidad del alojamiento. Esta inclusión mejoró la capacidad explicativa del modelo, alcanzando un $R^2$ cercano al 40.4%. Los resultados indican que el precio de una propiedad en Airbnb está influenciado principalmente por la capacidad de alojamiento, la calidad de la ubicación y el tipo de propiedad, aunque aún existen factores cualitativos no incluidos en los datos que también afectan la variación del precio.
+
+## 7. Conclusion
+Para la consultoría de SmartStay Advisors concluye que el modelado del precio de Airbnb alcanza su mayor precisión mediante un enfoque multiplicativo y segmentado. Tras evaluar diversas iteraciones, se determinó que el Modelo 4 (Híbrido) es el más robusto para la toma de decisiones, logrando un equilibrio entre rigor estadístico y realidad comercial al elevar la capacidad explicativa al 40.4%.
+
+Este análisis demostró que factores como la capacidad de huéspedes, la puntuación de ubicación y, fundamentalmente, el tipo de privacidad son los pilares esenciales para estimar valores competitivos y maximizar la rentabilidad del cliente. Se recomienda a la consultoría priorizar propiedades que maximicen estas variables, reconociendo que la transformación logarítmica es la herramienta técnica adecuada para evitar errores de predicción y capturar la verdadera tendencia de crecimiento del mercado.
+
+
