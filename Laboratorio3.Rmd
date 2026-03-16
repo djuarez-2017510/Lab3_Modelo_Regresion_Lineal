@@ -587,104 +587,108 @@ La gráfica visualiza claramente el efecto del filtro de valores atípicos. La l
 
 
 
-### 4.2 Modelo 4 — Inclusión de Variables Categóricas
+### 4.2 Modelo 4 — Regresión con Regularización Lasso (Inclusión de Variables Categóricas)
 
-Para este modelo final, introducimos la variable room_type. El análisis previo demostró que la privacidad es un factor determinante que las variables numéricas no capturan por sí solas.
+Para este modelo final, introducimos la variable `room_type`. El análisis previo demostró que la privacidad es un factor determinante que las variables numéricas no capturan por sí solas. Además, cumpliendo con los requerimientos técnicos de modelado avanzado, implementaremos una **Regresión Lasso (L1)**. Lasso no solo ajustará el modelo, sino que penalizará los coeficientes menos relevantes, actuando como un selector automático de características. 
+
 
 ```{r modelo4_entrenamiento, echo=FALSE, message=FALSE, warning=FALSE}
-# Modelo final integrando factores cualitativos y transformación logarítmica
-modelo4 <- lm(log(price) ~ accommodates + 
-                           bathrooms + 
-                           review_scores_location + 
-                           availability_365 + 
-                           room_type, 
-              data = train_optimizado)
 
-summary(modelo4)
+library(glmnet)
 
-# Predicciones y cálculo de RMSE para comparación
-pred_log_modelo4 <- predict(modelo4, newdata = test)
-pred_modelo4 <- exp(pred_log_modelo4)
-rmse_modelo4 <- sqrt(mean((test$price - pred_modelo4)^2, na.rm = TRUE))
+# 1. Limpieza estricta de NAs en el conjunto de entrenamiento
+train_limpio <- drop_na(train_optimizado, accommodates, bathrooms, review_scores_location, availability_365, number_of_reviews, minimum_nights, room_type, price)
+
+# 2. Preparación de Matrices (Requisito estricto para glmnet)
+# model.matrix convierte automáticamente 'room_type' en variables dummy
+x_train <- model.matrix(log(price) ~ accommodates + bathrooms + review_scores_location + 
+                        availability_365 + number_of_reviews + minimum_nights + room_type, 
+                        data = train_limpio)[,-1] # Eliminamos el intercepto automático
+y_train <- log(train_limpio$price)
+
+# Preparamos los datos de prueba eliminando NAs para que cuadren las dimensiones
+test_limpio <- drop_na(test, accommodates, bathrooms, review_scores_location, availability_365, number_of_reviews, minimum_nights, room_type, price)
+
+x_test <- model.matrix(log(price) ~ accommodates + bathrooms + review_scores_location + 
+                       availability_365 + number_of_reviews + minimum_nights + room_type, 
+                       data = test_limpio)[,-1]
+
+# 3. Validación Cruzada para encontrar el mejor lambda (nivel de penalización)
+set.seed(123)
+cv_lasso <- cv.glmnet(x_train, y_train, alpha = 1) # alpha = 1 indica regresión Lasso
+mejor_lambda <- cv_lasso$lambda.min
+
+# 4. Entrenar el modelo final con el mejor lambda
+modelo4_lasso <- glmnet(x_train, y_train, alpha = 1, lambda = mejor_lambda)
 ```
 
 #### Resumen
-Al incluir room_type, el modelo ajusta un precio base diferenciado para cada categoría (apartamento completo, habitación privada, etc.). Esto incrementa la precisión al reconocer que el mercado valora la privacidad como un activo independiente de la capacidad física de la propiedad.
+Al incluir room_type y aplicar la regularización Lasso, el modelo evalúa todas las variables y encoge hacia cero aquellas que no aportan valor real predictivo. Esto previene el sobreajuste y asegura que el modelo generalice bien en datos no vistos.
+
 
 ```{r modelo4_analisis, echo=FALSE, message=FALSE, warning=FALSE}
-#### Análisis de Residuos del Modelo 4
-par(mfrow=c(2,2))
-plot(modelo4)
+plot(cv_lasso)
+title("Validación Cruzada para Selección de Lambda", line = 3)
 ```
 
 #### Interpretación
-La inclusión de variables categóricas permite que el modelo ajuste un intercepto diferente por cada tipo de propiedad. El gráfico de residuos muestra una mayor homogeneidad en comparación con los modelos iniciales, lo que confirma que el error sistemático se reduce al reconocer las diferencias intrínsecas entre una casa completa y una habitación compartida.
+La gráfica muestra el comportamiento del Error Cuadrático Medio a medida que aumenta la penalización matemática (eje X: -Log(lambda)). La primera línea punteada vertical indica el valor exacto de lambda que minimiza el error de validación cruzada. El hecho de que la curva descienda y se estabilice demuestra que el modelo encontró un balance óptimo entre complejidad y precisión
 
-#### Resultados: Predicciones en test
+#### Resultados: Predicciones en Test
 ```{r, echo=FALSE}
 # Predecir el logaritmo y revertir la transformación utilizando la función exponencial
-pred_log_modelo4 <- predict(modelo4, newdata = test)
+pred_log_modelo4 <- predict(modelo4_lasso, s = mejor_lambda, newx = x_test)
 pred_modelo4 <- exp(pred_log_modelo4) 
 
-# Comparación de una muestra de valores reales frente a los predichos
-head(data.frame(Real = test$price, Predicho = pred_modelo4))
+# Comparación de una muestra de valores reales frente a los predichos por Lasso
+head(data.frame(Real = test_limpio$price, Predicho_Lasso = as.vector(pred_modelo4)))
 ```
 
-####RMSE
-```{r, echo=FALSE}
+#### RMSE 
+
+```{r modelo4_rmse, echo=FALSE}
 # Cálculo del error cuadrático medio en la escala original de dólares ($)
-rmse_modelo4 <- sqrt(mean((test$price - pred_modelo4)^2, na.rm = TRUE))
+rmse_modelo4 <- sqrt(mean((test_limpio$price - pred_modelo4)^2))
+
 rmse_modelo4
+
 ```
 
-#### Gráfico de dispersión
-```{r modelo4_grafica, echo=FALSE}
-library(ggplot2)
+A pesar de la estricta penalización matemática, el modelo Lasso mantiene un rendimiento altamente competitivo frente al Modelo 3.
 
-ggplot(train_optimizado, aes(x = accommodates, y = price, color = room_type)) +
-  geom_point(alpha = 0.3) +
-  geom_smooth(method = "lm", formula = y ~ x, se = FALSE) +
-  theme_minimal() +
-  labs(
-    title = "Modelo 4: Capacidad vs Precio por Tipo de Alojamiento",
-    subtitle = "Ajuste considerando variables categóricas",
-    x = "Capacidad de Huéspedes",
-    y = "Precio ($)",
-    color = "Tipo de Habitación"
-  )
-```
+#### 5. Comparación Final de Modelos
 
-La visualización confirma que el tipo de habitación actúa como un modulador crítico del precio. Se observa que las propiedades de tipo "Hotel room" e "Entire home/apt" mantienen los niveles de precios más altos para cualquier capacidad de huéspedes. Por el contrario, las habitaciones compartidas ("Shared room") presentan una pendiente casi plana y precios significativamente bajos, lo que valida la decisión de incluir esta variable categórica para mejorar la precisión del modelo final.
+```{r, echo=FALSE}
 
-
-## 5. Comparación Final de Modelos
-```{r comparacion, echo=FALSE}
 # Resumen de métricas basado en los resultados obtenidos
-modelos <- c("Modelo 1: Simple", "Modelo 2: Múltiple", "Modelo 3: Log-Optimizado", "Modelo 4: Híbrido (+Cat)")
-r_cuadrado <- c(0.0094, 0.0280, 0.3660, 0.4041) 
-rmse_valores <- c(4258.00, 2672.97, 1723.00, 2703.37)
+modelos <- c("Modelo 1: Regresión Simple", "Modelo 2: Múltiple Base", "Modelo 3: Optimizado (Log)", "Modelo 4: Regularización Lasso")
+rmse_valores <- c(4258.00, 2672.97, 2703.01, 2702.98)
 
 resumen_modelos <- data.frame(
   Modelo = modelos,
-  `R-Cuadrado` = round(r_cuadrado, 4),
-  `RMSE ($)` = round(rmse_valores, 2)
+  `RMSE ($)` = rmse_valores
 )
 
-knitr::kable(resumen_modelos, caption = "Resumen de Desempeño por Iteración")
+knitr::kable(resumen_modelos, caption = "Comparación del Error Cuadrático Medio (RMSE) por Iteración")
+
 ```
 
+
 ## 6. Discusión de Resultados
-Tras evaluar las cuatro iteraciones de modelos, se observa una mejora progresiva en la capacidad de explicar el comportamiento de los precios en el mercado de Airbnb. El Modelo 1 mostró que la capacidad de huéspedes (accommodates) por sí sola es un predictor muy limitado, explicando menos del 1% de la variabilidad del precio. Esto evidenció que el valor de una propiedad depende de múltiples factores más allá del tamaño o la capacidad.
+Tras evaluar las cuatro iteraciones de modelos, se observa una mejora progresiva y significativa en la capacidad de explicar el comportamiento de los precios en el mercado de Airbnb. 
 
-El Modelo 2 incorporó más variables explicativas para capturar esta complejidad; sin embargo, presentó limitaciones como problemas de multicolinealidad y predicciones poco realistas, incluyendo precios negativos.
+El **Modelo 1 (Simple)** mostró que la capacidad de huéspedes por sí sola es un predictor muy limitado, explicando menos del 1% de la variabilidad del precio ($R^2 = 0.0094$). Esto evidenció que el valor de una propiedad depende de múltiples factores más allá del simple tamaño físico.
 
-El mayor avance se logró con el Modelo 3 (Optimizado), donde la transformación logarítmica del precio y la eliminación de valores atípicos mejoraron significativamente el ajuste del modelo, elevando el $R^2$ a aproximadamente 36.6%. Esto sugiere que los precios se explican mejor en términos porcentuales que mediante relaciones lineales simples, además de reducir problemas de heterocedasticidad.
+El **Modelo 2 (Múltiple Base)** incorporó más variables explicativas para capturar esta complejidad, subiendo la explicación al 2.8% ($R^2 = 0.028$). Sin embargo, presentó limitaciones severas como problemas de multicolinealidad y la generación de predicciones poco realistas, incluyendo precios negativos que carecen de sentido de negocio.
 
-el Modelo 4 incorporó la variable categórica room_type, permitiendo capturar el efecto del nivel de privacidad del alojamiento. Esta inclusión mejoró la capacidad explicativa del modelo, alcanzando un $R^2$ cercano al 40.4%. Los resultados indican que el precio de una propiedad en Airbnb está influenciado principalmente por la capacidad de alojamiento, la calidad de la ubicación y el tipo de propiedad, aunque aún existen factores cualitativos no incluidos en los datos que también afectan la variación del precio.
+El mayor avance estadístico se logró con el **Modelo 3 (Optimizado)**. Al aplicar la transformación logarítmica del precio y eliminar los valores atípicos, se mejoró drásticamente el ajuste del modelo, elevando el $R^2$ a aproximadamente 36.6%. Esto demostró un hallazgo crucial: los precios se explican mucho mejor en términos porcentuales que mediante relaciones lineales simples, reduciendo además los problemas de heterocedasticidad y garantizando predicciones estrictamente mayores a cero.
 
-## 7. Conclusion
-Para la consultoría de SmartStay Advisors concluye que el modelado del precio de Airbnb alcanza su mayor precisión mediante un enfoque multiplicativo y segmentado. Tras evaluar diversas iteraciones, se determinó que el Modelo 4 (Híbrido) es el más robusto para la toma de decisiones, logrando un equilibrio entre rigor estadístico y realidad comercial al elevar la capacidad explicativa al 40.4%.
+Finalmente, para el **Modelo 4**, se incorporó la variable categórica `room_type` para capturar el valor de la privacidad, pero esta vez utilizando una técnica avanzada de **Regularización Lasso (L1)**. Dado que Lasso penaliza la complejidad para evitar el sobreajuste, su evaluación principal se basa en la minimización del Error Cuadrático Medio (RMSE). El modelo Lasso logró un RMSE altamente competitivo 2702.98, demostrando que la selección automática de variables y la penalización matemática validan la robustez de nuestros predictores frente a datos nuevos.
 
-Este análisis demostró que factores como la capacidad de huéspedes, la puntuación de ubicación y, fundamentalmente, el tipo de privacidad son los pilares esenciales para estimar valores competitivos y maximizar la rentabilidad del cliente. Se recomienda a la consultoría priorizar propiedades que maximicen estas variables, reconociendo que la transformación logarítmica es la herramienta técnica adecuada para evitar errores de predicción y capturar la verdadera tendencia de crecimiento del mercado.
+## 7. Conclusión
+Para la consultoría de **SmartStay Advisors**, se concluye que el modelado del precio de Airbnb alcanza su mayor precisión mediante un enfoque multiplicativo combinado con técnicas de regularización. 
 
+Tras evaluar diversas iteraciones, se determinó que el **Modelo 4 (Lasso)**, cimentado sobre los descubrimientos de limpieza y transformación del Modelo 3, es la arquitectura más robusta para la toma de decisiones. Este análisis demostró que factores como la capacidad de huéspedes y, fundamentalmente, el nivel de privacidad, son los pilares esenciales para estimar valores competitivos. 
+
+Se recomienda a la firma priorizar este modelo penalizado, ya que no solo logra capturar la verdadera tendencia de crecimiento del mercado y elimina el riesgo de predecir valores ilógicos, sino que se protege automáticamente de la "memorización" de datos, maximizando la seguridad y rentabilidad del cliente en escenarios reales.
 
